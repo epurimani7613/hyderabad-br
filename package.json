@@ -1,13 +1,22 @@
 {
   "name": "hyderabad-br",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
+  "description": "1:1 procedural Hyderabad battle royale - Three.js client, authoritative Node server",
   "scripts": {
-    "fetch:osm": "node tools/fetch-osm.mjs",
-    "bake": "node tools/bake-world.mjs",
+    "start": "node server/index.mjs",
     "server": "node server/index.mjs",
-    "test:multiplayer": "node tests/two-clients.mjs"
+    "fetch:osm": "node tools/fetch-osm.mjs data/raw",
+    "bake": "node tools/bake-world.mjs data/raw data/baked",
+    "build": "node tools/build-client.mjs",
+    "dev": "node tools/build-client.mjs --dev",
+    "test": "node tests/hitreg.mjs && node tests/two-clients.mjs",
+    "test:hitreg": "node tests/hitreg.mjs",
+    "test:net": "node tests/two-clients.mjs",
+    "test:combat": "node tests/combat.mjs",
+    "test:browser": "node tests/browser.mjs",
+    "test:public": "node tests/public.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",
