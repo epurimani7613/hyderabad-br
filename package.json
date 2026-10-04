@@ -1,0 +1,21 @@
+{
+  "name": "hyderabad-br",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fetch:osm": "node tools/fetch-osm.mjs",
+    "bake": "node tools/bake-world.mjs",
+    "server": "node server/index.mjs",
+    "test:multiplayer": "node tests/two-clients.mjs"
+  },
+  "dependencies": {
+    "three": "^0.180.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "localtunnel": "^2.0.2",
+    "playwright": "1.63"
+  }
+}

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b0f0d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Hyderabad BR</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<canvas id="view"></canvas>
+
+<!-- ================= MENU ================= -->
+<div id="menu">
+  <div class="menu-card">
+    <h1>HYDERABAD <span>BR</span></h1>
+    <p class="sub">1:1 · 36 × 44 km · Charminar · HITEC City · Durgam Cheruvu</p>
+    <input id="name" maxlength="16" placeholder="Your name">
+    <div class="row">
+      <input id="roomcode" maxlength="5" placeholder="ROOM CODE" style="text-transform:uppercase">
+    </div>
+    <button id="btn-public" class="primary">PLAY — PUBLIC MATCH</button>
+    <div class="row2">
+      <button id="btn-create">CREATE ROOM</button>
+      <button id="btn-join">JOIN ROOM</button>
+    </div>
+    <button id="btn-bots" class="ghost">PRACTICE (fill with bots)</button>
+    <pre id="log"></pre>
+    <div class="hint">
+      Desktop: <b>WASD</b> move · <b>mouse</b> look · <b>click</b> fire · <b>right-drag</b> aim<br>
+      <b>C</b> crouch · <b>Z</b> prone · <b>Space</b> jump · <b>Q</b> ADS · <b>R</b> reload · <b>V</b> vault · <b>E</b> use · <b>M</b> meds<br>
+      Mobile: left stick moves, drag right side to look, buttons fire.
+    </div>
+  </div>
+</div>
+
+<!-- ================= LOADING ================= -->
+<div id="loading" style="display:none">
+  <div class="load-text">Loading…</div>
+  <div class="spinner"></div>
+  <pre id="loadlog"></pre>
+</div>
+
+<!-- ================= HUD ================= -->
+<div id="hud"></div>
+<div id="stats"></div>
+
+<script type="module" src="/bundle.js"></script>
+</body>
+</html>

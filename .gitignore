@@ -1,0 +1,6 @@
+node_modules/
+data/raw/
+data/shots/
+data/*.log
+bin/
+*.log
