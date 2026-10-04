@@ -13,12 +13,26 @@ const OUTDIR = path.resolve(process.argv[3] || 'data/baked');
 fs.mkdirSync(OUTDIR, { recursive: true });
 
 // ---------- 1. load raw ----------
-const files = fs.readdirSync(RAW).filter(f => f.startsWith('t') && f.endsWith('.json'));
-let ways = [];
+// The cache is a union of several overlapping sweeps (a full-playfield pass plus
+// per-landmark passes), so the same OSM way appears in more than one tile - 730
+// duplicates at last count. Dedupe by OSM id here: a doubled building means a
+// doubled collision box and invisible geometry jitter.
+const files = fs.readdirSync(RAW).filter(f => f.endsWith('.json'));
+let raw = [];
 for (const f of files) {
-  try { ways = ways.concat(JSON.parse(fs.readFileSync(path.join(RAW, f), 'utf8'))); } catch { /* partial tile */ }
+  try {
+    const arr = JSON.parse(fs.readFileSync(path.join(RAW, f), 'utf8'));
+    if (Array.isArray(arr)) raw.push(...arr);
+  } catch { /* partial tile */ }
 }
-console.log(`loaded ${ways.length} ways from ${files.length} tiles`);
+const byId = new Map();
+let dupes = 0;
+for (const w of raw) {
+  if (byId.has(w.id)) { dupes++; continue; }
+  byId.set(w.id, w);
+}
+const ways = [...byId.values()];
+console.log(`loaded ${raw.length} records from ${files.length} tiles -> ${ways.length} unique ways (${dupes} duplicates dropped)`);
 
 // landmark positions in map metres
 const LM = {};

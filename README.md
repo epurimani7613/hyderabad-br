@@ -15,13 +15,35 @@ npm start           # http://localhost:8080
 
 | Area | Status |
 |---|---|
-| Map geometry | **Real.** 17,832 OpenStreetMap ways over a 36 × 44 km area, 345 tiles, from `api.openstreetmap.org`. 11,324 real building footprints, 4,817 road segments, 84 water bodies. |
-| Terrain height | **Synthetic.** The OSM `/map` API returns no elevation, so the heightmap is generated (Deccan plateau ≈ 540 m ASL, western hills, Durgam lake basin, Musi channel). It is plausible, not surveyed. |
-| Landmarks | Charminar, HITEC Cyber Towers + 5-level parking deck, and the Durgam Cheruvu cable bridge with boardwalks are hand-modelled procedurally and placed at their true coordinates. |
+| Map geometry | **Real, but unevenly covered.** 19,188 unique OpenStreetMap ways over a 36 × 44 km area: 11,817 building footprints, 5,245 road segments, 89 water bodies. Coverage is *not* uniform — see the honest-coverage note below. |
+| Terrain height | **Synthetic.** The OSM `/map` API returns no elevation, so the heightmap is generated (Deccan plateau ≈ 540 m ASL, western hills, Durgam lake basin, Musi channel). Plausible, not surveyed. |
+| Landmarks | Charminar, HITEC Cyber Towers + 5-level parking deck, and the Durgam Cheruvu cable bridge with boardwalks are hand-modelled procedurally. Placed at true coordinates, but the surrounding *city* density varies a lot — see below. |
 | Netcode | Authoritative 30 Hz server, client prediction, server reconciliation, 100 ms entity interpolation, 1 s lag-compensated hit registration. |
 | Ballistics | Real projectile simulation: drag, drop, travel time, material penetration, per-weapon falloff, head/body/limb zones. |
 | Characters | Procedural jointed rig with a blended state machine. **No mocap or downloaded animation assets.** |
 | Audio | Fully synthesised via WebAudio — no sample files. Footsteps differ per surface type. |
+
+## Honest coverage note
+
+OSM data is **not** uniformly dense across this playfield, and the map reflects
+that rather than hiding it:
+
+- **Dense, realistic:** Gachibowli, Kukatpally, Uppal, Secunderabad, HITEC City,
+  Durgam Cheruvu, KBR Park — these carry hundreds to over a thousand real
+  building footprints each.
+- **Sparse:** **Charminar's old city is almost entirely absent from OSM.** A
+  direct API query for a 1 km box at the monument returns 6 ways and *zero*
+  buildings. This is a property of the source data, not a bug: the old city is
+  mapped mostly as relations and unlabelled footprints. Charminar itself is
+  modelled procedurally, but the alleys around it are not real geometry.
+- The original full-playfield sweep exhausted its request budget in the south
+  (lat 17.20–17.47) and never reached the north. `tools/fetch-areas.mjs`
+  re-fetches a priority list of areas with per-area budgets so the landmarks are
+  guaranteed coverage; `tools/audit-raw.mjs` and `tools/audit-coverage.mjs`
+  report what is actually there.
+
+Run `node tools/audit-coverage.mjs` for a per-cell density map, and
+`node tools/audit-raw.mjs` for duplicate and per-landmark counts.
 
 ## Geography note
 
