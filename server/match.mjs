@@ -70,10 +70,15 @@ export class Match {
     p.slot = [w, null];
     p.slotIdx = 0;
     p.ammo = { [w]: WEAPONS[w].mag };
-    p.ammoPool = { [WEAPONS[w].ammo]: 120, '9mm': 60 };
+    // Reserve ammo has to cover a whole match, not a firefight. Bots used to
+    // start with 120 rounds, burned through it inside the opening minute of a
+    // 14-player scrum and then stood at 0 magazine / 0 reserve forever, unable
+    // to shoot again - matches never resolved and every death came from the
+    // circle. Four magazines is a realistic BR loadout.
+    p.ammoPool = { [WEAPONS[w].ammo]: WEAPONS[w].mag * 4, '9mm': 180 };
     p.armorLvl = 1; p.armor = ARMOR[1];
     p.helmetLvl = 1; p.helmet = ARMOR[1];
-    p.meds = { bandage: 3, firstaid: 1 };
+    p.meds = { bandage: 5, firstaid: 2 };
   }
   nextId() {
     let n = 1;
@@ -258,7 +263,24 @@ export class Match {
     const W = WEAPONS[wpnName];
     const res = p.ammo[wpnName] ?? 0;
 
-    // reload
+    // Finish any reload that has come due FIRST.
+    //
+    // Ordering matters and was previously inverted: the "start a new reload"
+    // block ran while a reload was still pending, so a weapon that ran dry
+    // restarted its reload timer every tick and NEVER completed. Ammo sat at 0
+    // and bots could never shoot again.
+    if (p.reloadUntil && p.reloadUntil <= this.time) {
+      const W2 = WEAPONS[p.reloadWpn];
+      const reserve = p.ammoPool?.[W2.ammo] ?? 0;
+      const need = W2.mag - (p.ammo[p.reloadWpn] ?? 0);
+      const take = Math.min(need, reserve);
+      p.ammo[p.reloadWpn] = (p.ammo[p.reloadWpn] ?? 0) + take;
+      p.ammoPool[W2.ammo] = reserve - take;
+      this.events.push({ t: 'reloadDone', id: p.id, wpn: p.reloadWpn, rounds: take });
+      p.reloadUntil = 0; p.reloadWpn = null;
+    }
+
+    // Now start a new reload if needed.
     if (has(input.buttons, BTN.RELOAD) || res === 0) {
       if (p.reloadUntil <= this.time && res < W.mag && (p.ammoPool?.[W.ammo] ?? 0) > 0) {
         p.reloadUntil = this.time + W.reload;
@@ -267,17 +289,6 @@ export class Match {
       }
     }
     if (p.reloadUntil > this.time) { p.firing = false; return; }
-    if (p.reloadUntil && p.reloadUntil <= this.time) {
-      // finish reload: move from reserve into magazine
-      const W2 = WEAPONS[p.reloadWpn];
-      const reserve = p.ammoPool?.[W2.ammo] ?? 0;
-      const need = W2.mag - (p.ammo[p.reloadWpn] ?? 0);
-      const take = Math.min(need, reserve);
-      p.ammo[p.reloadWpn] = (p.ammo[p.reloadWpn] ?? 0) + take;
-      p.ammoPool[W2.ammo] = reserve - take;
-      p.reloadUntil = 0; p.reloadWpn = null;
-      this.events.push({ t: 'reloadDone', id: p.id, wpn: p.reloadWpn });
-    }
 
     const interval = 60 / W.rpm;
     const canFire = wantFire && (W.auto || !p.triggerHeld);

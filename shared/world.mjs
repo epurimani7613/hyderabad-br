@@ -83,8 +83,14 @@ export class World {
       t -= sched[i].hold; idx = i + 1;
     }
     if (idx >= sched.length) {
+      // Fully closed. Hold the final circle at the LAST centre rather than
+      // snapping to the map origin: bots rotating toward (0,0) walked off and
+      // a 500 m circle at the origin is often empty ground nobody occupies.
       const last = sched[sched.length - 1];
-      return { cx: 0, cy: 0, r: last.r, next: null, dps: last.dps, phase: sched.length, closed: true };
+      return {
+        cx: this._finalCentre?.cx ?? 0, cy: this._finalCentre?.cy ?? 0,
+        r: last.r, next: null, dps: last.dps, phase: sched.length, closed: true,
+      };
     }
     const cur = sched[idx];
     const next = sched[idx + 1] || null;
@@ -97,6 +103,9 @@ export class World {
       const maxOff = Math.max(0, cur.r - next.r) * 0.62;
       nx = Math.cos(a) * maxOff * s();
       ny = Math.sin(a) * maxOff * s();
+    } else {
+      // Last phase: this IS the final circle, so remember its centre.
+      this._finalCentre = { cx: nx, cy: ny };
     }
     return { cx: nx, cy: ny, r: cur.r, next, nextX: nx, nextY: ny, dps: cur.dps, phase: idx, closed: false };
   }

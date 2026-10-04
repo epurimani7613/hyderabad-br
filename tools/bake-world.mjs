@@ -291,14 +291,18 @@ function zoneAt(x, y) {
 function rollItem(rnd, x, y) {
   const r = rnd();
   const tierBoost = rnd();
-  if (r < 0.34) return { k: 'weapon', n: rollWeapon(rnd, x, y) };
-  if (r < 0.44) return { k: 'ammo', n: WEAPONS[rollWeapon(rnd, x, y)].ammo, q: 30 };
-  if (r < 0.58) { const l = tierBoost < 0.55 ? 1 : tierBoost < 0.85 ? 2 : 3; return { k: 'armor', n: 'vest', lvl: l }; }
-  if (r < 0.66) { const l = tierBoost < 0.55 ? 1 : tierBoost < 0.85 ? 2 : 3; return { k: 'armor', n: 'helmet', lvl: l }; }
-  if (r < 0.76) return { k: 'med', n: 'bandage', q: 3 };
-  if (r < 0.83) return { k: 'med', n: 'firstaid', q: 1 };
-  if (r < 0.87) return { k: 'med', n: 'medkit', q: 1 };
-  if (r < 0.94) return { k: 'med', n: 'energy', q: 2 };
+  if (r < 0.30) return { k: 'weapon', n: rollWeapon(rnd, x, y) };
+  // Ammo is ~22% of spawns and carries two magazines. At the old rate (10% of
+  // spawns, 30 rounds) there was barely one crate per 4.5 km^2 across this
+  // playfield, so anyone who burned their reserve could not rearm at all and
+  // the match degenerated into walking until the circle killed you.
+  if (r < 0.52) return { k: 'ammo', n: WEAPONS[rollWeapon(rnd, x, y)].ammo, q: 90 };
+  if (r < 0.64) { const l = tierBoost < 0.55 ? 1 : tierBoost < 0.85 ? 2 : 3; return { k: 'armor', n: 'vest', lvl: l }; }
+  if (r < 0.71) { const l = tierBoost < 0.55 ? 1 : tierBoost < 0.85 ? 2 : 3; return { k: 'armor', n: 'helmet', lvl: l }; }
+  if (r < 0.80) return { k: 'med', n: 'bandage', q: 4 };
+  if (r < 0.86) return { k: 'med', n: 'firstaid', q: 1 };
+  if (r < 0.89) return { k: 'med', n: 'medkit', q: 1 };
+  if (r < 0.95) return { k: 'med', n: 'energy', q: 2 };
   return { k: 'med', n: 'painkill', q: 1 };
 }
 
@@ -322,7 +326,10 @@ for (const [k, l] of Object.entries(LM)) {
   }
 }
 // Wildland sprinkle (rural clusters along roads).
-for (let i = 0; i < 500; i++) {
+// Wildland scatter. 500 spread over 1584 km^2 is one crate per 3 km^2, which
+// left bots a kilometre from the nearest resupply; 2600 puts a walkable
+// density in the open country too.
+for (let i = 0; i < 2600; i++) {
   const x = (rnd() - 0.5) * MAP_W * 0.94, y = (rnd() - 0.5) * MAP_H * 0.94;
   loot.push({ x: +x.toFixed(1), y: +y.toFixed(1), z: +(terrainH(x, y) + 0.4).toFixed(1), ...rollItem(rnd, x, y), id: loot.length });
 }

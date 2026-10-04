@@ -15,7 +15,8 @@ const BOT_NAMES = ['BOT-VIPER', 'BOT-KITTU', 'BOT-SHADOW', 'BOT-ROHAN', 'BOT-AYE
 export function makeBotController(match, player, index) {
   const rng = mulberry32(0xB07 + index * 7919);
   const state = {
-    mode: 'loot',        // loot -> rotate -> engage -> heal
+    index,                  // spawn index, used for the drop spiral
+    mode: 'loot',        // loot -> hunt -> engage -> heal
     target: null,
     targetLoot: null,
     strafe: 0,
@@ -25,29 +26,100 @@ export function makeBotController(match, player, index) {
     skill: 0.45 + rng() * 0.45,   // aim accuracy + reaction
   };
 
+  /**
+   * Does this player need to go shopping? True when the equipped weapon is dry
+   * or the reserve is low.
+   *
+   * Without this, bots emptied their starting loadout in the opening scrum and
+   * then stood at 0 magazine / 0 reserve for the rest of the match, engaging
+   * at point-blank range without ever firing again. Matches stalled and every
+   * death came from the circle rather than from gunfire.
+   */
+  function needsAmmo(p) {
+    const wpn = p.slot[p.slotIdx];
+    if (!wpn) return true;
+    const W = WEAPONS[wpn];
+    const mag = p.ammo[wpn] ?? 0;
+    const reserve = p.ammoPool?.[W.ammo] ?? 0;
+    return mag <= 0 || reserve < W.mag;
+  }
+
+  /** Nearest untaken ammo crate matching this player's equipped weapon. */
+  function findAmmo(p, maxDist = 700) {
+    const wpn = p.slot[p.slotIdx];
+    if (!wpn) return null;
+    const want = WEAPONS[wpn].ammo;
+    let best = null, bd = maxDist;
+    for (const l of match.loot) {
+      if (l.taken || l.k !== 'ammo' || l.n !== want) continue;
+      const d = dist(p.x, p.y, l.x, l.y);
+      if (d < bd) { bd = d; best = l; }
+    }
+    return best;
+  }
+
   function think() {
     const p = player;
     if (!p.alive || !p.dropped) return;
     const zone = match.zone;
     const zoneDist = Math.hypot(p.x - zone.cx, p.y - zone.cy);
 
-    // Threat scan: nearest visible enemy inside the zone.
+    // Threat scan. Awareness is deliberately limited: a bot notices an enemy within
+    // SIGHT metres that is in front of it, OR any enemy very close regardless of
+    // direction (you cannot stand behind someone and not hear them).
+    //
+    // The old scan required BOTH conditions, so two bots walking toward each
+    // other from directly behind never detected each other and the match ran for
+    // minutes with nobody ever taking a shot.
+    const SIGHT = 220;
+    const CLOSE_QUIET = 60;                 // "in your face" - heard regardless of facing
     let best = null, bd = 1e9;
+    let nearestEnemy = null, nearestD = 1e9;   // tracked regardless of facing
     for (const q of match.players.values()) {
       if (q === p || !q.alive || !q.dropped) continue;
       const d = dist(p.x, p.y, q.x, q.y);
-      if (d > 190) continue;
-      // Only "see" them if roughly in front (bots have limited awareness).
-      if (!inCone(q.x, q.y, p.x, p.y, p.yaw, 1.5, 200)) continue;
+      if (d < nearestD) { nearestD = d; nearestEnemy = q; }
+      if (d > SIGHT) continue;
+      if (d > CLOSE_QUIET && !inCone(q.x, q.y, p.x, p.y, p.yaw, 1.5, SIGHT)) continue;
       if (d < bd) { bd = d; best = q; }
     }
 
     if (best && state.mode !== 'heal') state.mode = 'engage';
-    if (!best && state.mode === 'engage') state.mode = 'rotate';
-    if (p.hp < 45 && (p.meds?.bandage || p.meds?.firstaid || p.meds?.medkit) && !best) state.mode = 'heal';
+    if (!best && state.mode === 'engage') state.mode = 'hunt';
 
-    // Out of zone, or circle closing hard => rotate to centre.
-    if (zoneDist > zone.r * 0.82) state.mode = 'rotate';
+    // Out of zone, or circle closing hard => rotate to centre. Checked last so a
+    // visible enemy still wins: bots should fight their way in, not walk past.
+    // Once the circle has fully closed there is nowhere left to rotate to, so
+    // the survivors must close on each other or the match stalls forever with
+    // two bots circling an empty 500 m zone.
+    if (zone.closed) {
+      state.mode = 'hunt';
+    } else if (zoneDist > zone.r * 0.92 && !best) {
+      state.mode = 'rotate';
+    } else if (!best && nearestEnemy && nearestD > 250) {
+      // Converge. A 26 km opening circle over a 36x44 km map means bots spend
+      // the first phase wandering off in different directions and the zone then
+      // kills them before any of them meet. Pull everyone toward the circle
+      // centre while there is still plenty of time, so fights actually start.
+      state.mode = 'rotate';
+    }
+
+    // Dry with an enemy in sight? Back off and rearm. This has to override engage:
+// bots that were locked in `engage` with an empty magazine stared at their
+// target forever, unable to shoot and unwilling to leave, which is what kept
+// every match from resolving. A bot that cannot fire has nothing to gain from
+// the fight, so it goes and reloads instead.
+    if (needsAmmo(p) && p.dropped) {
+      const crate = findAmmo(p, 900);
+      if (crate) {
+        state.mode = 'resupply';
+        state.targetLoot = crate;
+      }
+    }
+
+    // Patch up when hurt, but only with no enemy around, not mid-fight, and not
+    // once the circle is closed (there is nobody left to heal for).
+    if (p.hp < 45 && !zone.closed && (p.meds?.bandage || p.meds?.firstaid || p.meds?.medkit) && !best) state.mode = 'heal';
 
     // Target selection.
     if (state.mode === 'engage') {
@@ -58,7 +130,19 @@ export function makeBotController(match, player, index) {
       p.pitch = Math.atan2(dy, d);
     } else if (state.mode === 'rotate') {
       state.target = null;
-      const ang = Math.atan2(zone.cy - p.y, zone.cx - p.x);
+      // Walk to a point inside the circle, not at its rim. Heading straight at
+      // (cx, cy) would overshoot past it, so aim at a point pulled back toward
+      // the middle: bots converge and then mill about together instead of
+      // spreading along the boundary.
+      let tx = zone.cx, ty = zone.cy;
+      const gd = dist(p.x, p.y, zone.cx, zone.cy);
+      if (gd > zone.r * 0.55) {
+        // keep 55% of the radius of headroom so we stop before the centre
+        const k = (gd - zone.r * 0.55) / gd;
+        tx = zone.cx - (zone.cx - p.x) * k;
+        ty = zone.cy - (zone.cy - p.y) * k;
+      }
+      const ang = Math.atan2(ty - p.y, tx - p.x);
       p.yaw += (((ang - p.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * 0.12;
       p.pitch *= 0.9;
     } else if (state.mode === 'heal') {
@@ -83,10 +167,20 @@ export function makeBotController(match, player, index) {
         const ang = Math.atan2(state.targetLoot.y - p.y, state.targetLoot.x - p.x);
         p.yaw += (((ang - p.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * 0.2;
       }
-      // A 36x44 km map means bots will never bump into each other by accident.
-      // Once kitted, drift toward the nearest living opponent so fights happen;
-      // without this the match stalls until the zone forces everyone together.
-      if (p.slot[0] && p.slotIdx === 0 && rng() < 0.012) state.mode = 'hunt';
+      // Looting is a short errand, not the default state. A 1.2% per-tick roll to
+      // start hunting meant a bot could spend an entire match walking between
+      // nearby loot crates and never engage anyone. Hunt whenever a target is
+      // known, and only return to looting when the area is picked clean.
+      if (p.slot[0] && nearestEnemy) state.mode = 'hunt';
+    } else if (state.mode === 'resupply') {
+      // Walk to the ammo crate; Match's proximity pickup takes it from us.
+      const crate = state.targetLoot;
+      if (!crate || crate.taken || !needsAmmo(p)) {
+        state.mode = 'hunt';
+      } else {
+        const ang = Math.atan2(crate.y - p.y, crate.x - p.x);
+        p.yaw += (((ang - p.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * 0.25;
+      }
     } else if (state.mode === 'hunt') {
       // Close on the nearest enemy until we can see them, then engage.
       let best = null, bd = 1e9;
@@ -98,9 +192,13 @@ export function makeBotController(match, player, index) {
       if (!best) { state.mode = 'loot'; return; }
       state.target = best;
       const ang = Math.atan2(best.y - p.y, best.x - p.x);
-      p.yaw += (((ang - p.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * 0.15;
-      if (bd < 170) state.mode = 'engage';
-      if (rng() < 0.004) state.mode = 'loot';   // don't commit forever
+      // Snap toward the target rather than easing. Bots eased at 0.15 rad/tick,
+      // which at a sprint turn rate left them circling their own drop point
+      // instead of closing - two bots 1.2 km apart never converged.
+      p.yaw = ang;
+      // Hand off to engage inside the sight radius so the threat scan can pick
+      // it up; before this, hunt kept walking until the target was on top of it.
+      if (bd < 200) state.mode = 'engage';
     }
   }
 
@@ -109,20 +207,24 @@ export function makeBotController(match, player, index) {
     const p = player;
     if (!p.alive) return { seq: 0, mx: 0, my: 0, pitch: p.pitch, yaw: p.yaw, buttons: 0 };
     if (!p.dropped) {
-      // Drop right next to the action. Bots were scattered across a 36x44 km
-      // playfield, so a solo player would never meet one; they now jump within
-      // a few hundred metres of the match anchor.
+      // Drop into a tight cluster. Bots used to be scattered 200-1600 m apart
+      // around an anchor, which on a 36x44 km map with a 26 km opening circle
+      // meant ZERO of the 91 possible bot pairs were ever within the 220 m
+      // sight radius: no fights, and every kill came from the circle. Drop them
+      // within a couple of hundred metres of each other so they actually meet.
       if (!p.botDropped) {
         p.botDropped = true;
         const anchor = [...match.players.values()].find(q => !q.bot);
-        const k = (p.id * 2654435761) >>> 0;
-        const rr = 200 + ((k & 0xff) / 255) * 1400;
-        const aa = ((k >> 8) & 0xffff) / 65535 * Math.PI * 2;
+        const idx = match.bots.get(p.id)?.state?.index ?? p.id;
         const cx = anchor ? anchor.x : 0;
         const cy = anchor ? anchor.y : 0;
+        // Golden-angle spiral inside a 260 m radius: every bot can see its
+        // neighbours immediately, but they are not stacked on one another.
+        const a = idx * 2.39996;
+        const r = 40 + Math.sqrt(idx + 1) * 58;
         match.jumpOut(p.id,
-          clamp(cx + Math.cos(aa) * rr, -MAP_W / 2 + 200, MAP_W / 2 - 200),
-          clamp(cy + Math.sin(aa) * rr, -MAP_H / 2 + 200, MAP_H / 2 - 200));
+          clamp(cx + Math.cos(a) * r, -MAP_W / 2 + 200, MAP_W / 2 - 200),
+          clamp(cy + Math.sin(a) * r, -MAP_H / 2 + 200, MAP_H / 2 - 200));
       }
       return { seq: 0, mx: 0, my: 0, pitch: 0, yaw: p.yaw, buttons: 0 };
     }
@@ -152,6 +254,12 @@ export function makeBotController(match, player, index) {
       // Reload when dry.
       const wpn = p.slot[p.slotIdx];
       if (wpn && (p.ammo[wpn] ?? 0) === 0) buttons |= BTN.RELOAD;
+    } else if (state.mode === 'hunt' || state.mode === 'resupply') {
+      // Close on the target / the ammo crate. Without an explicit branch here,
+      // hunt bots stood completely still (my/mx stayed 0), so they never
+      // reached anyone and the match ran for minutes with zero shots.
+      my = 1;
+      buttons |= BTN.SPRINT;
     } else if (state.mode === 'rotate' || state.mode === 'loot') {
       my = 1;
       if (state.mode === 'rotate') buttons |= BTN.SPRINT;
