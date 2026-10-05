@@ -6,12 +6,27 @@
 // so the whole 36x44 km map draws in ~25 draw calls instead of ~250k.
 import * as THREE from 'three';
 import { MAP_W, MAP_H, LANDMARKS } from '../../shared/config.mjs';
+import { pbrMaterial, surfaceClass, environmentFromSky } from './pbr.mjs';
 
 const rngFactory = (seed) => {
   let a = seed >>> 0;
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 };
+
+// The baker emits a coarse material name; map it onto the richer PBR classes.
+const BAKER_TO_PBR = {
+  concrete: 'concretePanel', brick: 'brick', glass: 'glass', stone: 'stone', wood: 'wood',
+};
+function mapBakerMat(k) { return BAKER_TO_PBR[k] || 'concretePanel'; }
+
+// Deterministic per-bucket tint jitter so a row of same-tagged buildings does
+// not read as one extruded colour.
+function variantOf(k) {
+  let h = 0;
+  for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) | 0;
+  return Math.abs(h) % 4;
+}
 
 export class WorldRenderer {
   constructor(scene, world) {
@@ -42,8 +57,14 @@ export class WorldRenderer {
     // Chunked heightfield: 8x8 chunks so frustum culling can drop most of the
     // 44 km map every frame. Single 192x192 mesh = 36k verts, always drawn.
     const CH = 12, G = this.world.G;
+    // Terrain keeps vertex colours (they encode biome/altitude) but gains a PBR
+    // detail normal so the ground has surface texture instead of reading as
+    // smooth-shaded plastic at close range. A second UV set keeps the detail
+    // tile independent of the biome colouring.
     const mat = new THREE.MeshStandardMaterial({
       vertexColors: true, roughness: 0.96, metalness: 0.0, flatShading: false,
+      normalMap: pbrMaterial('dirt', 0).normalMap,
+      normalScale: new THREE.Vector2(0.35, 0.35),
     });
     const chunkSize = G / CH;
     const group = new THREE.Group();
@@ -91,17 +112,13 @@ export class WorldRenderer {
       if (!byMat.has(k)) byMat.set(k, []);
       byMat.get(k).push(b);
     }
-    const mats = {
-      concrete: { color: 0xb9b2a6, roughness: 0.9 },
-      brick:    { color: 0xa8765a, roughness: 0.95 },
-      glass:    { color: 0x8fc4d8, roughness: 0.12, metalness: 0.85 },
-      stone:    { color: 0xc9c2b4, roughness: 0.95 },
-      wood:     { color: 0x9a7a52, roughness: 0.9 },
-    };
+    // Materials come from the PBR library (see pbr.mjs). The old inline table of
+    // flat colours is gone: it is what made the city read as painted plastic.
     for (const [k, list] of byMat) {
-      const cfg = mats[k] || mats.concrete;
       const geo = new THREE.BoxGeometry(1, 1, 1);
-      const mat = new THREE.MeshStandardMaterial(cfg);
+      // Real PBR: albedo + roughness + normal maps and an envMap for reflections.
+      // The old flat colours are why the city looked like painted plastic.
+      const mat = pbrMaterial(mapBakerMat(k), variantOf(k));
       const inst = new THREE.InstancedMesh(geo, mat, list.length);
       inst.castShadow = true; inst.receiveShadow = true;
       const m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
@@ -123,7 +140,7 @@ export class WorldRenderer {
     const decks = boxes.filter(b => b.deck);
     if (decks.length) {
       const g = new THREE.BoxGeometry(1, 1, 1);
-      const mat = new THREE.MeshStandardMaterial({ color: 0x8d8478, roughness: 0.92 });
+      const mat = pbrMaterial('concretePanel', 1);
       const inst = new THREE.InstancedMesh(g, mat, decks.length);
       inst.receiveShadow = true;
       const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), scl = new THREE.Vector3();
@@ -172,10 +189,11 @@ export class WorldRenderer {
       geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
       geo.setAttribute('normal', new THREE.Float32BufferAttribute(norms, 3));
       geo.setIndex(idx);
-      const mat = new THREE.MeshStandardMaterial({
-        color: cls === 'path' ? 0x9c8b6a : cls === 'service' ? 0x8e8e8a : 0x4a4a4c,
-        roughness: 0.94, side: THREE.DoubleSide,
-      });
+      // Roads get real asphalt/dirt PBR. `path` and `service` are unpaved, so they
+    // take the dirt class; everything else is asphalt.
+      const surfaceCls = surfaceClass(cls === 'path' || cls === 'service' ? 'dirt' : 'asphalt');
+      const mat = pbrMaterial(surfaceCls, variantOf(cls));
+      mat.side = THREE.DoubleSide;
       const mesh = new THREE.Mesh(geo, mat);
       mesh.receiveShadow = true;
       mesh.frustumCulled = false;
@@ -229,7 +247,8 @@ export class WorldRenderer {
       const canopyGeo = new THREE.IcosahedronGeometry(1.5, 0);
       canopyGeo.translate(0, 3.0, 0);
       const merged = mergeGeometries([trunkGeo, canopyGeo]);
-      const mat = new THREE.MeshStandardMaterial({ color: 0x4a6b3a, roughness: 0.92, flatShading: true });
+      const mat = pbrMaterial('grass', 0);
+      mat.flatShading = true;
       const inst = new THREE.InstancedMesh(merged, mat, trees.length);
       const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), scl = new THREE.Vector3();
       trees.forEach((t, i) => {
@@ -247,7 +266,8 @@ export class WorldRenderer {
     const rocks = this.data.rocks;
     if (rocks.length) {
       const geo = new THREE.DodecahedronGeometry(1, 0);
-      const mat = new THREE.MeshStandardMaterial({ color: 0x8b8378, roughness: 0.98, flatShading: true });
+      const mat = pbrMaterial('gravel', 2);
+      mat.flatShading = true;
       const inst = new THREE.InstancedMesh(geo, mat, rocks.length);
       const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), scl = new THREE.Vector3();
       rocks.forEach((t, i) => {
@@ -281,7 +301,7 @@ export class WorldRenderer {
 
   // Charminar: four stacked arcades with corner minarets and a bulbous dome.
   makeCharminar(g, L) {
-    const stone = new THREE.MeshStandardMaterial({ color: 0xd8cdb4, roughness: 0.95 });
+    const stone = pbrMaterial('stone', 0);
     const S = L.size, H = L.height;
     // Main block: 4 arcaded faces, open at ground level (the real structure is
     // a hollow square with arches on all sides).
@@ -323,7 +343,7 @@ export class WorldRenderer {
       g.add(cap);
     }
     // Staircase to the minarets (visual; the climb itself is platforming).
-    const stairMat = new THREE.MeshStandardMaterial({ color: 0xc4b89f, roughness: 0.95 });
+    const stairMat = pbrMaterial('stone', 2);
     for (let s = 0; s < 14; s++) {
       const step = new THREE.Mesh(new THREE.BoxGeometry(S - 4, 0.5, 1.4), stairMat);
       const t = s / 13;
@@ -334,8 +354,8 @@ export class WorldRenderer {
   }
 
   makeTower(g, L) {
-    const glass = new THREE.MeshStandardMaterial({ color: 0x9fd0e0, roughness: 0.08, metalness: 0.9, envMapIntensity: 1.2 });
-    const frame = new THREE.MeshStandardMaterial({ color: 0x6e7a80, roughness: 0.4, metalness: 0.7 });
+    const glass = pbrMaterial('glass', 0);
+    const frame = pbrMaterial('steel', 1);
     const body = new THREE.Mesh(new THREE.CylinderGeometry(L.r, L.r * 1.06, L.h, 20), glass);
     body.position.y = L.h / 2; body.castShadow = true; g.add(body);
     // Floor bands.
@@ -355,8 +375,8 @@ export class WorldRenderer {
   }
 
   makeCableBridge(g, L) {
-    const steel = new THREE.MeshStandardMaterial({ color: 0x8a9298, roughness: 0.5, metalness: 0.6 });
-    const deckMat = new THREE.MeshStandardMaterial({ color: 0x6f6a63, roughness: 0.9 });
+    const steel = pbrMaterial('steel', 3);
+    const deckMat = pbrMaterial('concrete', 2);
     const half = L.span / 2, deckY = 26;
     // Deck.
     const deck = new THREE.Mesh(new THREE.BoxGeometry(L.span, 0.8, L.deckW), deckMat);
@@ -386,7 +406,7 @@ export class WorldRenderer {
   }
 
   makeBoardwalk(g, L) {
-    const wood = new THREE.MeshStandardMaterial({ color: 0x8a6a45, roughness: 0.95 });
+    const wood = pbrMaterial('wood', 0);
     const deck = new THREE.Mesh(new THREE.BoxGeometry(L.len, 0.5, 4), wood);
     deck.position.y = 2.2; deck.receiveShadow = true; g.add(deck);
     for (let i = -3; i <= 3; i++) {
@@ -397,7 +417,7 @@ export class WorldRenderer {
   }
 
   makeParkingDeck(g, L) {
-    const conc = new THREE.MeshStandardMaterial({ color: 0x9b968d, roughness: 0.95 });
+    const conc = pbrMaterial('concrete', 1);
     for (let l = 0; l < L.levels; l++) {
       const slab = new THREE.Mesh(new THREE.BoxGeometry(60, 0.5, 44), conc);
       slab.position.y = l * 4.2; slab.receiveShadow = true; g.add(slab);

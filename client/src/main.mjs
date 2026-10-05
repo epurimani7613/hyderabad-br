@@ -2,6 +2,7 @@
 // Entry point: menu -> connect -> match. Owns the renderer, camera rig, atmosphere,
 // audio, and the frame loop that ties prediction to presentation.
 import * as THREE from 'three';
+import { environmentFromSky } from './pbr.mjs';
 import { World } from '../../shared/world.mjs';
 import { WorldRenderer } from './world-renderer.mjs';
 import { Character } from './character.mjs';
@@ -174,6 +175,21 @@ function launch(netClient, world, data) {
   sky.frustumCulled = false;
   scene.add(sky);
 
+  // Image-based lighting. Without an environment map, MeshStandardMaterial
+  // renders every metal and glass surface almost black, because there is
+  // nothing for it to reflect - which is why the towers and car glass read as
+  // dead grey. Built once from the sky shader and refreshed when the day/night
+  // cycle crosses a threshold (see the atmosphere update below).
+  let envRT = null;
+  let lastEnvBucket = -1;
+  function refreshEnvironment() {
+    const prev = envRT;
+    envRT = environmentFromSky(renderer, sky);
+    scene.environment = envRT;
+    if (prev) prev.dispose();
+  }
+  refreshEnvironment();
+
   const sun = new THREE.DirectionalLight(0xfff2d0, 2.4);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -282,6 +298,11 @@ function launch(netClient, world, data) {
     sun.color.setHSL(0.09, 0.35 + (1 - warmth) * 0.25, 0.55 + warmth * 0.2);
     hemi.intensity = 0.35 + warmth * 0.6;
     sky.material.uniforms.sun.value.set(Math.cos(dayT * Math.PI * 2), Math.max(elev, 0.02), 0.3).normalize();
+    // Keep image-based lighting in step with the sky. Rebuilding the PMREM every
+    // frame would be far too slow, so refresh on a coarse bucket of the cycle -
+    // reflections only need to be roughly right, not frame-accurate.
+    const envBucket = Math.floor(dayT * 8);
+    if (envBucket !== lastEnvBucket) { lastEnvBucket = envBucket; refreshEnvironment(); }
     sky.material.uniforms.top.value.setHSL(0.58, 0.45, 0.22 + warmth * 0.35);
     sky.material.uniforms.bottom.value.setHSL(0.09, 0.4, 0.35 + warmth * 0.3);
 

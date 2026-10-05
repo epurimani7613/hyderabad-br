@@ -120,12 +120,41 @@ somewhere that holds a connection, and put the client behind it:
 Environment variables: `PORT`, `BOT_TOTAL` (bots per match, default 14),
 `OSM_BUDGET` (fetch request cap).
 
+## Materials (PBR)
+
+`client/src/pbr.mjs` builds every material procedurally at load time — no binary
+texture assets in the repo:
+
+- **Albedo, roughness and normal maps** generated on a canvas from multi-octave
+  value noise, with the normal map Sobel-derived from a height field.
+- **15 material classes** (asphalt, concrete, dirt, grass, gravel, plaster,
+  brick, concrete panel, glass, steel, painted metal, stone, wood, tile) keyed off
+  OSM `building:material` and surface tags, with a deterministic per-building hash
+  fallback so a street of untagged buildings is not one flat colour.
+- **Image-based lighting**: a PMREM environment map is baked from the existing sky
+  shader and refreshed on eight coarse buckets of the day/night cycle. Without it
+  `MeshStandardMaterial` renders metal and glass almost black — there is nothing to
+  reflect — which is why the towers previously read as dead grey.
+
+Verified in a real browser (`node tests/pbr.mjs`, WebGL): 273 materials carry an
+albedo + roughness map, 417 carry a normal map, the environment map is bound, and
+the scene draws in 267 calls across 38,981 instances.
+
+Measured cost against a clean HEAD worktree in the same headless GL environment:
+**1.9 → 1.8 FPS, 316 → 267 draw calls, 1 → 24 textures.** The ~5% frame cost is the
+texture sampling. Those absolute FPS numbers are software rasterisation, not a
+device measurement — real mobile GPU performance is untested.
+
 ## Known limitations
 
 - Terrain elevation is generated, not surveyed — no SRTM/DEM source was reachable.
 - Buildings are extruded axis-aligned boxes from OSM footprints, not detailed
   façades. Interiors exist as stacked decks, not furnished rooms.
 - Character animation is procedural; there is no clip blending from mocap.
+- PBR textures are procedural noise, not scanned or authored art; facades are
+  flat boxes with normal maps, not window geometry.
+- Frame rate was measured only under headless software GL. No real mobile GPU
+  has been profiled, so the 'mobile-first' claim is unverified on hardware.
 - Bots use a loot→hunt→engage→resupply→heal→rotate state machine and do not
   path around walls; they sprint at a target and rely on the shared sim's
   collision to slide along it.

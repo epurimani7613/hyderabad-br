@@ -4,3 +4,5 @@ data/shots/
 data/*.log
 bin/
 *.log
+.DS_Store
+**/.DS_Store
