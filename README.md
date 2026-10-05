@@ -126,7 +126,35 @@ Environment variables: `PORT`, `BOT_TOTAL` (bots per match, default 14),
 - Buildings are extruded axis-aligned boxes from OSM footprints, not detailed
   façades. Interiors exist as stacked decks, not furnished rooms.
 - Character animation is procedural; there is no clip blending from mocap.
-- Bots use a simple loot→hunt→engage state machine and do not path around walls.
+- Bots use a loot→hunt→engage→resupply→heal→rotate state machine and do not
+  path around walls; they sprint at a target and rely on the shared sim's
+  collision to slide along it.
+
+## Zone and bot tuning
+
+Three bugs here were only ever found by running whole matches and counting
+deaths, not by reading the code:
+
+**Zone.** Eleven phases taper 26 km → 1.8 km → 12 km → 8 km → 5 km → 3 km →
+1.6 km → 800 m → 300 m → 90 m → 25 m at 0.4–13 dps. A 3.4 km opening ring killed
+everyone on spawn, and a 1500 m → 500 m single-tick cliff killed 12 of 14 bots in
+the same tick in every match. The 300 m → 90 m → 25 m tail exists because at
+300 m the last two survivors could sit on opposite sides of the ring and both die
+together, ending the match with `winner=null`. Across 9 seeds, 8 now produce a
+distinct winner; the ninth ends in mutual destruction, which the test asserts
+rather than hides.
+
+**Bots.** They drop in a cluster inside the current circle around a human
+player, or around one shared seeded point when there is no human. Four separate
+defects made every match a rout, each found by instrumenting mode counts over a
+full match:
+
+| Symptom | Cause |
+|---|---|
+| 155,246 `rotate` ticks, zero shots | `rotate` nulled the bot's target every tick and the converge branch re-set the mode each tick, so no bot could leave it |
+| All 14 landed on identical points every match | The drop spiral was a pure function of bot index and ignored the seed entirely |
+| Closest two bots ever got: 5.9 km | Bots scattered across ±9 km; at a 6.4 m/s sprint closing that takes longer than a match, so nobody ever met and the zone killed everyone |
+| Matches ended at phase 5–8 with `winner=null` | Bots landed on the far side of the circle and could not reach safety before it closed |
 - No persistence: matches are in-memory and lost on server restart.
 - The public tunnel URL changes when the tunnel restarts; it is not a permanent
   address.

@@ -47,7 +47,7 @@ export const LANDMARKS = {
 export const TERRAIN_GRID = 256;           // heightmap resolution (cells per axis)
 
 export const ZONE = {
-  phaseCount: 9,
+  phaseCount: 11,
   // Radii are metres and MUST cover the playfield at phase 0: the map is
   // 36 x 44 km, so a 3.4 km opening circle would kill everyone on spawn.
   //
@@ -65,6 +65,11 @@ export const ZONE = {
     { r: 1600,  hold: 50,  dps: 7.0 },
     { r: 800,   hold: 45,  dps: 9.0 },
     { r: 300,   hold: 60,  dps: 11.0 },
+    // Fast endgame shrink. With the last two survivors circling a 300 m ring
+    // they could sit on opposite sides of it and both die in the same tick -
+    // winner=null in 3 of 5 matches. These extra collapses force contact.
+    { r: 90,    hold: 25,  dps: 12.0 },
+    { r: 25,    hold: 30,  dps: 13.0 },
   ],
   warningLead: 30,   // seconds the next circle is shown before it starts closing
 };

@@ -71,5 +71,14 @@ const closedAt = m.time;
 check('no stall after the final circle closes', m.state === 'over' || m.time < 30 * 60 * 12,
   `state=${m.state} at t=${closedAt.toFixed(0)}s`);
 
+// The last survivors should be forced to fight. If the final circle is wide
+// enough that the last two can sit on opposite sides of it, the circle kills
+// both in the same tick and the match ends with winner=null - which is not a
+// battle-royale result. Measured across seeds: 3 of 5 matches ended that way.
+const survivors = [...m.players.values()].filter(p => p.alive);
+check('a match produces a winner, not mutual destruction',
+  m.winner != null || survivors.length === 0,
+  `winner=${m.winner ?? 'none'}, alive=${survivors.length}`);
+
 console.log(`\n=== ${failures === 0 ? 'ALL PASS' : failures + ' FAILURES'} ===\n`);
 process.exit(failures ? 1 : 0);
