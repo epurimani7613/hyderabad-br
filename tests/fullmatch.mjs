@@ -17,7 +17,7 @@ for (let i = 0; i < BOTS; i++) {
   const b = m.join(null, null);
   b.bot = true; b.ws = null;
   b.name = `BOT-${String(i + 1).padStart(2, '0')}`;
-  b.botCtl = makeBotController(m, b, i);
+  b.botCtl = makeBotController(m, b, i, SEED);
   m.bots.set(b.id, b.botCtl);
 }
 check('match populated', m.playerCount === BOTS, `${m.playerCount} players`);
@@ -63,6 +63,13 @@ check('kills happened by gunfire, not just the circle',
   killTally > 0, `${killTally} gunfire kills (attacker tally) vs ${zoneDeaths} zone deaths`);
 check('zone advanced through phases', (kinds.zone || 0) >= 3, `${kinds.zone || 0} zone phases`);
 check('weapons were reloaded', (kinds.reloadDone || 0) > 0, `${kinds.reloadDone || 0} reloads completed`);
+
+// A match must always terminate. Once the circle has fully closed it does 14 dps
+// to everyone outside a 500 m radius, so survivors cannot stall indefinitely:
+// either they fight, or the circle kills them.
+const closedAt = m.time;
+check('no stall after the final circle closes', m.state === 'over' || m.time < 30 * 60 * 12,
+  `state=${m.state} at t=${closedAt.toFixed(0)}s`);
 
 console.log(`\n=== ${failures === 0 ? 'ALL PASS' : failures + ' FAILURES'} ===\n`);
 process.exit(failures ? 1 : 0);

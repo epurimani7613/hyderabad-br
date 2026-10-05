@@ -15,7 +15,7 @@ npm start           # http://localhost:8080
 
 | Area | Status |
 |---|---|
-| Map geometry | **Real, but unevenly covered.** 19,188 unique OpenStreetMap ways over a 36 × 44 km area: 11,817 building footprints, 5,245 road segments, 89 water bodies. Coverage is *not* uniform — see the honest-coverage note below. |
+| Map geometry | **Real, but unevenly covered.** 19,574 unique OpenStreetMap ways over a 36 × 44 km area: 14,422 building footprints, 5,510 road segments. Coverage is *not* uniform — see the honest-coverage note below. |
 | Terrain height | **Synthetic.** The OSM `/map` API returns no elevation, so the heightmap is generated (Deccan plateau ≈ 540 m ASL, western hills, Durgam lake basin, Musi channel). Plausible, not surveyed. |
 | Landmarks | Charminar, HITEC Cyber Towers + 5-level parking deck, and the Durgam Cheruvu cable bridge with boardwalks are hand-modelled procedurally. Placed at true coordinates, but the surrounding *city* density varies a lot — see below. |
 | Netcode | Authoritative 30 Hz server, client prediction, server reconciliation, 100 ms entity interpolation, 1 s lag-compensated hit registration. |
@@ -42,8 +42,19 @@ that rather than hiding it:
   guaranteed coverage; `tools/audit-raw.mjs` and `tools/audit-coverage.mjs`
   report what is actually there.
 
-Run `node tools/audit-coverage.mjs` for a per-cell density map, and
-`node tools/audit-raw.mjs` for duplicate and per-landmark counts.
+Run `node tools/audit-coverage.mjs` for a per-cell density map,
+`node tools/audit-raw.mjs` for duplicate and per-landmark counts, and
+`node tools/audit-baked.mjs` for what actually reaches the game world.
+
+Two further data bugs worth knowing about, both fixed:
+- The OSM `/map` endpoint **clips a way to the requested bbox**. A building
+  straddling a large tile's edge came back with 1–2 identical points and a
+  zero-area footprint, was cached like any other record, and was never retried.
+  That silently deleted 989 buildings. `tools/repair-osm.mjs` purges them and
+  re-fetches their area at a finer granularity.
+- Landmark `radius` is the size of the *district*, not the monument. HITEC City is
+  ~4 × 4 km, so the original 1.8 km radius left the towers standing in open
+  ground with the real city 2 km away.
 
 ## Geography note
 

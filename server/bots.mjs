@@ -12,8 +12,12 @@ import { mulberry32 } from '../shared/rng.mjs';
 const BOT_NAMES = ['BOT-VIPER', 'BOT-KITTU', 'BOT-SHADOW', 'BOT-ROHAN', 'BOT-AYESHA',
   'BOT-FARHAN', 'BOT-NIHAAL', 'BOT-TANVI', 'BOT-REHAN', 'BOT-MEHER'];
 
-export function makeBotController(match, player, index) {
-  const rng = mulberry32(0xB07 + index * 7919);
+export function makeBotController(match, player, index, seed = 0) {
+  // Seed from the MATCH seed, not just the bot index. Previously every match
+  // played out identically because each bot's RNG was a pure function of its
+  // index: the same bot made the same decisions, strafed the same way, and
+  // every seed produced a byte-identical match.
+  const rng = mulberry32(((seed >>> 0) || 0xB07) + index * 7919 + 13);
   const state = {
     index,                  // spawn index, used for the drop spiral
     mode: 'loot',        // loot -> hunt -> engage -> heal
@@ -104,13 +108,17 @@ export function makeBotController(match, player, index) {
       state.mode = 'rotate';
     }
 
-    // Dry with an enemy in sight? Back off and rearm. This has to override engage:
-// bots that were locked in `engage` with an empty magazine stared at their
-// target forever, unable to shoot and unwilling to leave, which is what kept
-// every match from resolving. A bot that cannot fire has nothing to gain from
-// the fight, so it goes and reloads instead.
+    // Dry? Go find ammo. This has to override engage: bots locked in `engage`
+    // with an empty magazine stared at their target forever, unable to shoot and
+    // unwilling to leave, which is what stopped matches from resolving.
+    //
+    // The search radius has to grow as the circle closes. Previously it was a
+    // flat 900 m, so once the final 500 m circle formed and all the loot had been
+    // looted or was outside it, dry bots found nothing and simply orbited each
+    // other forever at 130-380 m - outside their own 220 m sight range - so the
+    // match never ended.
     if (needsAmmo(p) && p.dropped) {
-      const crate = findAmmo(p, 900);
+      const crate = findAmmo(p, zone.closed ? 4000 : zone.r * 0.9 + 900);
       if (crate) {
         state.mode = 'resupply';
         state.targetLoot = crate;
@@ -194,11 +202,13 @@ export function makeBotController(match, player, index) {
       const ang = Math.atan2(best.y - p.y, best.x - p.x);
       // Snap toward the target rather than easing. Bots eased at 0.15 rad/tick,
       // which at a sprint turn rate left them circling their own drop point
-      // instead of closing - two bots 1.2 km apart never converged.
+      // instead of closing.
       p.yaw = ang;
-      // Hand off to engage inside the sight radius so the threat scan can pick
-      // it up; before this, hunt kept walking until the target was on top of it.
-      if (bd < 200) state.mode = 'engage';
+      // Hand off to engage as soon as the target is inside the threat-scan range,
+      // and keep closing well inside it. Two survivors would otherwise orbit each
+      // other at 130-380 m - permanently outside the 220 m sight radius - so they
+      // never detected each other and the match never ended.
+      if (bd < SIGHT * 0.85) state.mode = 'engage';
     }
   }
 

@@ -24,34 +24,47 @@ export const MAP_SIZE = Math.max(MAP_W, MAP_H);
 
 // Named drop zones, in true map metres. The renderer, the zone/bot logic and
 // the server spawner all read this one table.
+//
+// `radius` is the size of the DISTRICT, not the size of the monument. HITEC City
+// is roughly 4 x 4 km of mixed commercial and residential, so a 1.8 km radius
+// left the towers sitting in open ground with the real city 2 km away; these
+// radii are sized from the actual extent of each area's building footprints in
+// the OSM cache (see tools/audit-baked.mjs).
 export const LANDMARKS = {
-  charminar:   { lat: 17.6144, lon: 78.4747, label: 'Charminar Old City', radius: 1400 },
-  hitec:      { lat: 17.4435, lon: 78.4690, label: 'HITEC City',        radius: 1800 },
-  durgam:     { lat: 17.3380, lon: 78.4400, label: 'Durgam Cheruvu',    radius: 2200 },
-  kbr:        { lat: 17.4125, lon: 78.4710, label: 'KBR Park',          radius: 900  },
-  assembly:   { lat: 17.4740, lon: 78.4700, label: 'Assembly',          radius: 700  },
-  secunder:   { lat: 17.4398, lon: 78.4983, label: 'Secunderabad',      radius: 1200 },
-  kukatpally: { lat: 17.4430, lon: 78.4130, label: 'Kukatpally',        radius: 1100 },
-  gachibowli: { lat: 17.4400, lon: 78.3480, label: 'Gachibowli',        radius: 1100 },
-  uppal:      { lat: 17.4020, lon: 78.5600, label: 'Uppal',             radius: 900  },
-  begumpet:   { lat: 17.4230, lon: 78.4660, label: 'Begumpet',          radius: 800  },
-  mehdipatnam:{ lat: 17.4150, lon: 78.5100, label: 'Mehdipatnam',       radius: 900  },
-  sainikpuri: { lat: 17.4400, lon: 78.4900, label: 'Sainikpuri',        radius: 1000 },
+  charminar:   { lat: 17.6144, lon: 78.4747, label: 'Charminar Old City', radius: 1600 },
+  hitec:      { lat: 17.4435, lon: 78.4690, label: 'HITEC City',        radius: 3200 },
+  durgam:     { lat: 17.3380, lon: 78.4400, label: 'Durgam Cheruvu',    radius: 3000 },
+  kbr:        { lat: 17.4125, lon: 78.4710, label: 'KBR Park',          radius: 1400 },
+  assembly:   { lat: 17.4740, lon: 78.4700, label: 'Assembly',          radius: 1500 },
+  secunder:   { lat: 17.4398, lon: 78.4983, label: 'Secunderabad',      radius: 1800 },
+  kukatpally: { lat: 17.4430, lon: 78.4130, label: 'Kukatpally',        radius: 2000 },
+  gachibowli: { lat: 17.4400, lon: 78.3480, label: 'Gachibowli',        radius: 2200 },
+  uppal:      { lat: 17.4020, lon: 78.5600, label: 'Uppal',             radius: 1600 },
+  begumpet:   { lat: 17.4230, lon: 78.4660, label: 'Begumpet',          radius: 1400 },
+  mehdipatnam:{ lat: 17.4150, lon: 78.5100, label: 'Mehdipatnam',       radius: 1500 },
+  sainikpuri: { lat: 17.4400, lon: 78.4900, label: 'Sainikpuri',        radius: 1800 },
 };
 export const TERRAIN_GRID = 256;           // heightmap resolution (cells per axis)
 
 export const ZONE = {
-  phaseCount: 7,
+  phaseCount: 9,
   // Radii are metres and MUST cover the playfield at phase 0: the map is
   // 36 x 44 km, so a 3.4 km opening circle would kill everyone on spawn.
+  //
+  // The tail is deliberately gentle-then-tight rather than a cliff. An earlier
+  // schedule went 3600 -> 1500 -> 500, which snapped 1500 m down to 500 m in one
+  // tick: everyone still inside the old circle but outside the new one took 14 dps
+  // with no warning, and 12 bots died simultaneously in every match.
   schedule: [
     { r: 26000, hold: 120, dps: 0.4 },
-    { r: 17000, hold: 90,  dps: 0.8 },
-    { r: 11000, hold: 75,  dps: 1.6 },
-    { r: 7000,  hold: 60,  dps: 3.0 },
-    { r: 3600,  hold: 50,  dps: 5.5 },
-    { r: 1500,  hold: 40,  dps: 9.0 },
-    { r: 500,   hold: 35,  dps: 14.0 },
+    { r: 18000, hold: 90,  dps: 0.7 },
+    { r: 12000, hold: 80,  dps: 1.2 },
+    { r: 8000,  hold: 70,  dps: 2.0 },
+    { r: 5000,  hold: 60,  dps: 3.5 },
+    { r: 3000,  hold: 55,  dps: 5.0 },
+    { r: 1600,  hold: 50,  dps: 7.0 },
+    { r: 800,   hold: 45,  dps: 9.0 },
+    { r: 300,   hold: 60,  dps: 11.0 },
   ],
   warningLead: 30,   // seconds the next circle is shown before it starts closing
 };

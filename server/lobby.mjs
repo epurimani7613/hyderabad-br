@@ -96,7 +96,7 @@ export class Lobby {
       p.y = anchor.y + Math.sin(a) * r;
       p.z = this.world.terrainHeight(p.x, p.y) + 0.1;
     }
-    p.botCtl = makeBotController(m, p, index);
+    p.botCtl = makeBotController(m, p, index, m.seed);
     m.bots.set(p.id, p.botCtl);
     console.log(`[lobby] added bot ${p.name} to match ${m.id}`);
     return true;

@@ -131,14 +131,32 @@ function parseOsm(xml) {
     let span = 0;
     for (let i = 1; i < pts.length; i++) span += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
     if (span > 4000) continue;
-    let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9, sx = 0, sy = 0;
-    for (const p of pts) { minx = Math.min(minx, p[0]); miny = Math.min(miny, p[1]); maxx = Math.max(maxx, p[0]); maxy = Math.max(maxy, p[1]); sx += p[0]; sy += p[1]; }
-    out.push({ id: (/id="(\d+)"/.exec(m[1]) || [0, '0'])[1], t: tags, g: pts,
-               cx: +(sx / pts.length).toFixed(1), cy: +(sy / pts.length).toFixed(1),
-               bx: [+minx.toFixed(1), +miny.toFixed(1), +maxx.toFixed(1), +maxy.toFixed(1)] });
-  }
-  return out;
-}
+    // Reject degenerate ways at PARSE time, not at bake time.
+      //
+      // OSM's /map endpoint clips a way to the requested bbox and returns only the
+      // nodes inside it. When a tile is large, a building straddling the edge comes
+      // back with 1-2 identical points and a zero-area bbox. Those records are
+      // cached like any other, so the building silently vanishes from the world and
+      // is never retried - 989 buildings were lost this way.
+      //
+      // Dropping them here means the next fetch pass re-requests the area at a finer
+      // granularity, where the clipped way comes back whole.
+      if (pts.length < 3) return;
+      let span2 = 0;
+      for (let i = 1; i < pts.length; i++) span2 += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      if (span2 < 1.0) return;                        // all points collapsed
+      const wmm = Math.max(...pts.map(p => p[0])) - Math.min(...pts.map(p => p[0]));
+      const dnn = Math.max(...pts.map(p => p[1])) - Math.min(...pts.map(p => p[1]));
+      if (wmm < 0.5 && dnn < 0.5) return;            // sub-half-metre footprint
+
+      let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9, sx = 0, sy = 0;
+      for (const p of pts) { minx = Math.min(minx, p[0]); miny = Math.min(miny, p[1]); maxx = Math.max(maxx, p[0]); maxy = Math.max(maxy, p[1]); sx += p[0]; sy += p[1]; }
+      out.push({ id: (/id="(\d+)"/.exec(m[1]) || [0, '0'])[1], t: tags, g: pts,
+                 cx: +(sx / pts.length).toFixed(1), cy: +(sy / pts.length).toFixed(1),
+                 bx: [+minx.toFixed(1), +miny.toFixed(1), +maxx.toFixed(1), +maxy.toFixed(1)] });
+      }
+      return out;
+    }
 
 for (const area of AREAS) {
   const dLat = area.r / MLAT, dLon = area.r / MLON;
