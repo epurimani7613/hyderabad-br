@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+data/raw
+data/shots
+data/*.log
+bin
+*.log
+.DS_Store
+**/.DS_Store
+.git
+.github
+Dockerfile
+.dockerignore
+tests/_*

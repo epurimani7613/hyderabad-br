@@ -3,7 +3,15 @@
 // that matters for "give me a link anyone can click".
 import { chromium } from 'playwright';
 
-const BASE = process.env.BASE || 'https://thoughts-similarly-refine-watt.trycloudflare.com';
+// No hardcoded default on purpose. A baked-in tunnel URL silently goes stale and
+// the test then fails against a dead host for reasons that have nothing to do with
+// the code, which is exactly how a real regression gets missed. Require the caller
+// to name the target explicitly.
+const BASE = process.env.BASE || process.env.URL;
+if (!BASE) {
+  console.error('set BASE=<url> (or URL) to the server under test');
+  process.exit(2);
+}
 let failures = 0;
 const check = (n, ok, d = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? '  — ' + d : ''}`); if (!ok) failures++; };
 
