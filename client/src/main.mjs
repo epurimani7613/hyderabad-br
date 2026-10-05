@@ -14,7 +14,11 @@ import { WEAPONS, MAP_W, MAP_H } from '../../shared/config.mjs';
 import { clamp, lerp } from '../../shared/geometry.mjs';
 
 const qs = new URLSearchParams(location.search);
-const WORLD_URL = qs.get('world') || '/data/baked/world.json';
+// Relative, not '/data/...': this client is also served from a GitHub Pages
+// subpath (https://user.github.io/hyderabad-br/), where a leading slash resolves
+// to the domain root and 404s. The ?world= override still wins for split deploys
+// where the geometry lives on a different host than the page.
+const WORLD_URL = qs.get('world') || './data/baked/world.json';
 const WS_URL = qs.get('ws') || (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
 
 // ---------------------------------------------------------------- menu
