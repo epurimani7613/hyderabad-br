@@ -11,6 +11,16 @@ npm run build       # bundle the client
 npm start           # http://localhost:8080
 ```
 
+
+## Play it
+
+```bash
+docker run -d -p 8080:8080 -e BOT_TOTAL=24 ghcr.io/epurimani7613/hyderabad-br:latest
+# then open http://localhost:8080
+```
+
+Two browsers, two sticks, one shared origin. Repo: <https://github.com/epurimani7613/hyderabad-br>
+
 ## What is actually real here
 
 | Area | Status |
@@ -135,24 +145,37 @@ real Playwright browsers joining the same match** (`BASE=http://localhost:8099/
 node tests/public.mjs` → ALL PASS, both clients in match 1, 14 opponents each,
 36 ms ping).
 
-### Not yet done: a permanent public URL
+### The image is published — one command to play
 
-There is no permanent public game URL yet. The image builds and runs locally, but
-publishing it needs one credential this machine does not have:
+The CI workflow publishes a multi-arch image to GitHub Container Registry:
 
-- **GHCR** — `docker push ghcr.io/epurimani7613/hyderabad-br` was attempted and
-  rejected: `permission_denied: The token provided does not match expected
-  scopes`. The `gh` token in the keyring carries `gist, read:org, repo, workflow`
-  and is **missing `write:packages`**. Fix: run
-  `gh auth refresh -h github.com -s write:packages`, then push, then set the
-  package to public visibility. `.github/workflows/build.yml` already does this
-  automatically with the built-in `GITHUB_TOKEN` once Actions has read/write
-  permission.
-- **Any VM / container host** (Fly, Railway, Render, DO, EC2) — needs a login this
-  machine does not have.
+```bash
+docker run -d -p 8080:8080 -e BOT_TOTAL=24 ghcr.io/epurimani7613/hyderabad-br:latest
+```
 
-Until one of those is done, the only reachable URL is an ephemeral
-`cloudflared` quick tunnel, which dies with the process.
+Verified end to end: the image was pulled back from GHCR on an **arm64** host (an
+earlier amd64-only build failed with `no matching manifest`, which is why the
+workflow now builds both architectures), came up `healthy`, and two Playwright
+browsers joined the same match through it (`ALL PASS`, 14 opponents each).
+
+### What is still missing: a public *game URL*
+
+The artifact is published and permanent, but **no public play URL exists yet**,
+because this machine has no login for any host that will run a long-lived
+container:
+
+- **A container host** (Fly.io, Railway, Render, DigitalOcean, EC2, or a
+  VPS) will serve the game at a real domain. `docker run` above is the whole
+  deploy; the host only needs to map a port and terminate TLS.
+- **Local play:** `docker run …` then `http://localhost:8080`, or `npm start`.
+- **Ephemeral tunnel:** `cloudflared tunnel --url http://localhost:8080` — works
+  today and was verified with two browsers, but the URL dies with the process
+  and must be re-shared each time.
+
+Pushing to GHCR from this machine by hand also fails: the `gh` token in the
+keyring carries `gist, read:org, repo, workflow` and is missing
+`write:packages`. CI sidesteps this by using the built-in `GITHUB_TOKEN`. To push
+manually, run `gh auth refresh -h github.com -s write:packages` first.
 
 Environment variables: `PORT`, `BOT_TOTAL` (bots per match, default 14),
 `OSM_BUDGET` (fetch request cap).
