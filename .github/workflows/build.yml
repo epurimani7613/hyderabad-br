@@ -80,5 +80,10 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ github.sha }}
+          # Publish linux/amd64 and linux/arm64. A single-arch image is not
+          # pullable on the other architecture - an arm64 machine (Apple Silicon,
+          # Graviton) fails with "no matching manifest", which is exactly how this
+          # was first shipped and caught.
+          platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
