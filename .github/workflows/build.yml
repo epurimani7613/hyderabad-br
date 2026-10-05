@@ -32,13 +32,12 @@ jobs:
       # tests/pbr.mjs drives a real browser, so install the headless shell.
       - run: npx playwright install --with-deps chromium
       - run: npm run build
-      # Headless sim suites need no server at all.
+      # Headless sim suites that need no server at all.
       - run: node tests/hitreg.mjs
       - run: node tests/fullmatch.mjs
-      - run: node tests/combat.mjs
-      # These talk to a live server, so start one. two-clients.mjs and browser.mjs
-      # only connect to URL/port 8080 - they do NOT boot a server themselves, which
-      # is why they timed out in CI until this step was added.
+      # Everything below talks to a live server on port 8080. None of these tests
+      # boot one themselves - that is why they all timed out / ECONNREFUSED in CI
+      # until the server step was added below.
       - name: Start server
         run: |
           node server/index.mjs > server.log 2>&1 &
@@ -47,6 +46,7 @@ jobs:
             sleep 1
           done
           curl -sf http://127.0.0.1:8080/ >/dev/null || { cat server.log; exit 1; }
+      - run: node tests/combat.mjs
       - run: node tests/two-clients.mjs
       - run: node tests/browser.mjs
         env:
