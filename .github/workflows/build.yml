@@ -29,14 +29,35 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
+      # tests/pbr.mjs drives a real browser, so install the headless shell.
+      - run: npx playwright install --with-deps chromium
       - run: npm run build
-      # Headless sim suites: hit registration, a full bot match, two networked
-      # clients. These need no browser and no GPU.
+      # Headless sim suites need no server at all.
       - run: node tests/hitreg.mjs
       - run: node tests/fullmatch.mjs
-      - run: node tests/two-clients.mjs
       - run: node tests/combat.mjs
+      # These talk to a live server, so start one. two-clients.mjs and browser.mjs
+      # only connect to URL/port 8080 - they do NOT boot a server themselves, which
+      # is why they timed out in CI until this step was added.
+      - name: Start server
+        run: |
+          node server/index.mjs > server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/ >/dev/null; then echo "up after ${i}s"; break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8080/ >/dev/null || { cat server.log; exit 1; }
+      - run: node tests/two-clients.mjs
+      - run: node tests/browser.mjs
+        env:
+          # browser.mjs reads BASE (not URL) - checked, not assumed.
+          BASE: http://127.0.0.1:8080
       - run: node tests/pbr.mjs
+        env:
+          URL: http://127.0.0.1:8080/
+      - name: Server log
+        if: always()
+        run: tail -20 server.log
 
   image:
     runs-on: ubuntu-latest

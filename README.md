@@ -108,14 +108,51 @@ placing two players in clear line of sight at a known distance.
 
 ## Deployment
 
-Static hosting (Vercel/Netlify/GitHub Pages) cannot serve the WebSocket server,
-and a static host alone will not give you multiplayer. Run the Node server
-somewhere that holds a connection, and put the client behind it:
+Static hosting (Vercel/Netlify/GitHub Pages) **cannot** serve the WebSocket
+server, so a static host alone will not give you multiplayer. One Node process
+serves the static client, the WebSocket endpoint and the authoritative match loop
+from a single origin, which is why this deploys as a container rather than as a
+site.
 
-- **Local / LAN:** `npm start`, then `http://<lan-ip>:8080`
-- **Public tunnel:** `cloudflared tunnel --url http://localhost:8080`
-- **Real deploy:** any VM or container host that runs `node server/index.mjs`.
-  Set `PORT`, and put TLS in front (the client auto-selects `wss://` on https).
+### Run it
+
+```bash
+npm install && npm run build
+npm start                       # http://localhost:8080
+```
+
+With Docker (builds the client bundle inside the image):
+
+```bash
+docker build -t hyderabad-br .
+docker run -d -p 8080:8080 -e BOT_TOTAL=24 hyderabad-br
+```
+
+### Verified
+
+The container image was built, run, health-checked, and played through by **two
+real Playwright browsers joining the same match** (`BASE=http://localhost:8099/
+node tests/public.mjs` → ALL PASS, both clients in match 1, 14 opponents each,
+36 ms ping).
+
+### Not yet done: a permanent public URL
+
+There is no permanent public game URL yet. The image builds and runs locally, but
+publishing it needs one credential this machine does not have:
+
+- **GHCR** — `docker push ghcr.io/epurimani7613/hyderabad-br` was attempted and
+  rejected: `permission_denied: The token provided does not match expected
+  scopes`. The `gh` token in the keyring carries `gist, read:org, repo, workflow`
+  and is **missing `write:packages`**. Fix: run
+  `gh auth refresh -h github.com -s write:packages`, then push, then set the
+  package to public visibility. `.github/workflows/build.yml` already does this
+  automatically with the built-in `GITHUB_TOKEN` once Actions has read/write
+  permission.
+- **Any VM / container host** (Fly, Railway, Render, DO, EC2) — needs a login this
+  machine does not have.
+
+Until one of those is done, the only reachable URL is an ephemeral
+`cloudflared` quick tunnel, which dies with the process.
 
 Environment variables: `PORT`, `BOT_TOTAL` (bots per match, default 14),
 `OSM_BUDGET` (fetch request cap).
